@@ -1,5 +1,6 @@
 import os
 import pygame
+import random
 pygame.init()
 
 
@@ -81,6 +82,11 @@ class Cavaleiro(pygame.sprite.Sprite):
         self.index = 0
         self.action = 0
         self.atualiza_tempo = pygame.time.get_ticks()
+        # VARIÁVEIS DA IA
+        self.movimentação_contagem = 0
+        self.visao = pygame.Rect(0, 0, 150, 20)
+        self.parado = False
+        self.contagem_parado = 0
 
         tipos_animações = ['Idle', 'Andar', 'Pular', 'Flecha', 'Morte']
         lista_temp = []
@@ -147,10 +153,10 @@ class Cavaleiro(pygame.sprite.Sprite):
 
     def Atacar(self):
         if self.flecha_cooldown == 0 and self.munição > 0:
-            self.flecha_cooldown = 80
-            nova_flecha = Flecha(jogador.rect.centerx + (
+            self.flecha_cooldown = 20
+            nova_flecha = Flecha(self.rect.centerx + (
                 # MANTEM ATACANDO
-                0.6 * jogador.rect.size[0] * jogador.direção), jogador.rect.centery, jogador.direção)
+                0.6 * self.rect.size[0] * self.direção), self.rect.centery, self.direção)
             grupo_flecha.add(nova_flecha)
             self.munição -= 1
 
@@ -159,20 +165,39 @@ class Cavaleiro(pygame.sprite.Sprite):
             self.atualizar_ações(3)
 
     def ia(self):
-        self.movimentação_contagem = 0
         if self.vida and jogador.vida:
-            if self.direção == 1:
-                ia_andar_direita = True
+            if self.parado == False and random.randint(1, 200) == 1:
+                self.atualizar_ações(0)  # ação parado
+                self.parado = True
+                self.contagem_parado = 50
+            # CHECA SE A IA ESTÁ PERTO DO JOGADOR
+            if self.visao.colliderect(jogador.rect):
+                # para de correr ao encontrar o jogador
+                self.atualizar_ações(0)  # parar
+                # ATIRAR
+                self.Atacar()
             else:
-                ia_andar_direita = False
-            ia_andar_esquerda = not ia_andar_direita
-            self.movimentação(ia_andar_esquerda, ia_andar_direita)
-            self.movimentação_contagem += 1
+                if self.parado == False:
+                    if self.direção == 1:
+                        ia_andar_direita = True
+                    else:
+                        ia_andar_direita = False
+                    ia_andar_esquerda = not ia_andar_direita
+                    self.movimentação(ia_andar_esquerda, ia_andar_direita)
+                    self.atualizar_ações(1)  # ação correr
+                    self.movimentação_contagem += 1
+                    # ATUALIZA A VISAO DA IA COM O MOVIMENTO DO INIMIGO
+                    self.visao.center = (self.rect.centerx +
+                                         75 * self.direção, self.rect.centery)
 
-            if self.movimentação_contagem > HITBOX_GRANADA:
-                self.direção *= -1
-                self.movimentação_contagem *= -1
-                
+                    if self.movimentação_contagem > HITBOX_GRANADA:
+                        self.direção *= -1
+                        self.movimentação_contagem *= -1
+                else:
+                    self.contagem_parado -= 1
+                    if self.contagem_parado <= 0:
+                        self.parado = False
+
     def atualizar_animação(self):
         # ATUALIZA ANIMAÇÃO
         atualização_animação = 200
@@ -380,8 +405,8 @@ grupo_caixas_itens.add(item_caixa)
 jogador = Cavaleiro('jogador', 200, 200, 2, 3, 25, 5)
 barra_vida = BarraVida(10, 10, jogador.saúde, jogador.saúde)
 
-esqueleto = Cavaleiro('esqueleto', 400, 255, 1.5, 3, 25, 0)
-esqueleto2 = Cavaleiro('esqueleto', 500, 255, 1.5, 3, 25, 0)
+esqueleto = Cavaleiro('esqueleto', 500, 255, 1.5, 2, 100, 0)
+esqueleto2 = Cavaleiro('esqueleto', 300, 255, 1.5, 2, 100, 0)
 grupo_esqueleto.add(esqueleto)
 grupo_esqueleto.add(esqueleto2)
 iniciar = True
