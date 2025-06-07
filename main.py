@@ -1,11 +1,13 @@
 import os
 import pygame
 import random
+import csv
 pygame.init()
 
 
-tamanho_tela = (1000, 700)
-tela = pygame.display.set_mode(tamanho_tela)
+largura_tela = 1000
+altura_tela = 700
+tela = pygame.display.set_mode((largura_tela, altura_tela))
 pygame.display.set_caption('Shooter')
 
 # DEFINIÇÕES PARA AÇÕES DO JOGADOR
@@ -15,7 +17,21 @@ atirando = False
 granada = False
 granada_atirar = False
 
+# DEFINE VARIÁVEIS DO JOGO
+gravidade = 0.5
+TAMANHO_BLOCO = 40
+linhas = 16
+colunas = 150
+TAMANHO_BLOCO = altura_tela // linhas
+tipos_textura = 15
+level = 1
 # Carregar imagens
+# GUARDA TEXTURAS NA LISTA
+img_list = []
+for x in range(tipos_textura):
+    img = pygame.image.load(f'img/texturas/{x}.png')
+    img = pygame.transform.scale(img, (TAMANHO_BLOCO, TAMANHO_BLOCO))
+    img_list.append(img)
 # FLECHA
 imagem_flecha = pygame.image.load('img/jogador/Flecha/0.png').convert_alpha()
 imagem_granada = pygame.image.load('img/granada/granada.png').convert_alpha()
@@ -31,9 +47,6 @@ item_caixas = {
     'Munição': imagem_caixa_municao,
     'Granada': imagem_caixa_granada
 }
-# DEFINE VARIÁVEIS DO JOGO
-gravidade = 0.5
-HITBOX_GRANADA = 40
 
 # DEFINE O FPS 'frame por segundo'
 fps = pygame.time.Clock()
@@ -190,7 +203,7 @@ class Cavaleiro(pygame.sprite.Sprite):
                     self.visao.center = (self.rect.centerx +
                                          75 * self.direção, self.rect.centery)
 
-                    if self.movimentação_contagem > HITBOX_GRANADA:
+                    if self.movimentação_contagem > TAMANHO_BLOCO:
                         self.direção *= -1
                         self.movimentação_contagem *= -1
                 else:
@@ -240,14 +253,65 @@ class Cavaleiro(pygame.sprite.Sprite):
             self.image, self.flip, False), self.rect)
 
 
+class World():
+    def __init__(self):
+        self.lista_obstaculo = []
+
+    def processar_dados(self, dados):
+        # Lê cada valor no arquivo do level, csv
+        for y, linha in enumerate(dados):
+            for x, grade in enumerate(linha):
+                if grade >= 0:
+                    img = img_list[grade]
+                    img_rect = img.get_rect()
+                    img_rect.x = x * TAMANHO_BLOCO
+                    img_rect.y = y * TAMANHO_BLOCO
+                    tile_data = (img, img_rect)
+                    if grade >= 0 and grade <= 4:
+                        self.lista_obstaculo.append(tile_data)
+                    elif grade >= 5 and grade <= 6:
+                        pass  # AGUA
+                    elif grade >= 7 and grade <= 8:
+                        pass  # decoração
+                    elif grade == 9:  # CRIA O JOGADOR
+                        jogador = Cavaleiro(
+                            'jogador', x * TAMANHO_BLOCO, y * TAMANHO_BLOCO, 2, 3, 25, 5)
+                        barra_vida = BarraVida(
+                            10, 10, jogador.saúde, jogador.saúde)
+                    elif grade == 10:  # CRIA OS INIMIGOS
+                        esqueleto = Cavaleiro(
+                            'esqueleto', x * TAMANHO_BLOCO, y * TAMANHO_BLOCO, 1.5, 2, 100, 0)
+                        grupo_esqueleto.add(esqueleto)
+                    elif grade == 11:  # CRIA CAIXA MUNIÇÕES
+                        item_caixa = CaixaItens(
+                            'Munição',  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
+                        grupo_caixas_itens.add(item_caixa)
+                    elif grade == 12:  # CRIA CAIXA GRANADA
+                        item_caixa = CaixaItens(
+                            'Granada',  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
+                        grupo_caixas_itens.add(item_caixa)
+                    elif grade == 13:  # CRIA CAIXA MUNIÇÕES
+                        item_caixa = CaixaItens(
+                            'Saude',  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
+                        grupo_caixas_itens.add(item_caixa)
+                    elif grade == 14:  # cria saída
+                        pass
+        return jogador, barra_vida
+
+    def draw(self):
+        for tile in self.lista_obstaculo:
+            tela.blit(tile[0], tile[1])
+
+
+
 class CaixaItens(pygame.sprite.Sprite):
     def __init__(self, tipo_item, x, y,):
         pygame.sprite.Sprite.__init__(self)
         self.tipo_item = tipo_item
         self.image = item_caixas[self.tipo_item]
         self.rect = self.image.get_rect()
-        self.rect.midtop = (x + HITBOX_GRANADA // 2, y +
-                            (HITBOX_GRANADA - self.image.get_height()))
+        self.rect.midtop = (x + TAMANHO_BLOCO // 2, y +
+                            (TAMANHO_BLOCO - self.image.get_height()))
 
     def update(self):
         # CHECA SE O JOGADOR PEGOU A CAIXA
@@ -346,12 +410,12 @@ class Granada(pygame.sprite.Sprite):
             explosão = Explosão(self.rect.x, self.rect.y, 0.5)
             grupo_explosão.add(explosão)
             # DAR DANO A QUALQUER QUE ESTEJA PERTO
-            if abs(self.rect.centerx - jogador.rect.centerx) < HITBOX_GRANADA * 2 and \
-                    abs(self.rect.centery - jogador.rect.centery) < HITBOX_GRANADA * 2:
+            if abs(self.rect.centerx - jogador.rect.centerx) < TAMANHO_BLOCO * 2 and \
+                    abs(self.rect.centery - jogador.rect.centery) < TAMANHO_BLOCO * 2:
                 jogador.saúde -= 50
             for esqueleto in grupo_esqueleto:
-                if abs(self.rect.centerx - esqueleto.rect.centerx) < HITBOX_GRANADA * 2 and \
-                        abs(self.rect.centery - esqueleto.rect.centery) < HITBOX_GRANADA * 2:
+                if abs(self.rect.centerx - esqueleto.rect.centerx) < TAMANHO_BLOCO * 2 and \
+                        abs(self.rect.centery - esqueleto.rect.centery) < TAMANHO_BLOCO * 2:
                     esqueleto.saúde -= 50
 
 
@@ -392,27 +456,29 @@ grupo_granada = pygame.sprite.Group()
 grupo_explosão = pygame.sprite.Group()
 grupo_caixas_itens = pygame.sprite.Group()
 
-# CRIA CAIXAS DE ITENS - TEMPORARIO
-item_caixa = CaixaItens('Saude', 100, 260)
-grupo_caixas_itens.add(item_caixa)
 
-item_caixa = CaixaItens('Munição', 400, 260)
-grupo_caixas_itens.add(item_caixa)
+# CRIA LISTA VAZIA DE GRADES
+world_data = []
 
-item_caixa = CaixaItens('Granada', 500, 260)
-grupo_caixas_itens.add(item_caixa)
+for linha in range(linhas):
+    r = [-1] * colunas
+    world_data.append(r)
+with open(f'level{level}_data.csv', newline='') as csvfile:
+    reader = csv.reader(csvfile, delimiter=',')
+    for x, linha in enumerate(reader):
+        for y, grade in enumerate(linha):
+            world_data[x][y] = int(grade)
+world = World()
+jogador, barra_vida = world.processar_dados(world_data)
 
-jogador = Cavaleiro('jogador', 200, 200, 2, 3, 25, 5)
-barra_vida = BarraVida(10, 10, jogador.saúde, jogador.saúde)
+# carrega os dados de um nivel e cria o mundo
 
-esqueleto = Cavaleiro('esqueleto', 500, 255, 1.5, 2, 100, 0)
-esqueleto2 = Cavaleiro('esqueleto', 300, 255, 1.5, 2, 100, 0)
-grupo_esqueleto.add(esqueleto)
-grupo_esqueleto.add(esqueleto2)
+
 iniciar = True
 while iniciar:
 
     tela_background()
+    world.draw()
 
     # MOSTRA VIDA DO JOGADOR
     barra_vida.desenhar(jogador.saúde)
