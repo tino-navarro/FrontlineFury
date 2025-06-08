@@ -1,5 +1,5 @@
 import pygame
-import button
+from recursos import button
 import csv
 
 pygame.init()
@@ -26,19 +26,19 @@ current_tile = 0
 scroll_left = False
 scroll_right = False
 scroll = 0 
-
+scroll_speed = 1
 
 
 #carrega imagens
-img_textura = pygame.image.load('img/background/2304x1296.png').convert_alpha()
+img_textura = pygame.image.load('recursos/img/background/2304x1296.png').convert_alpha()
 lista_img = []
 for x in range(TIP_BLOCO):
-    img = pygame.image.load(f'img/texturas/{x}.png').convert_alpha()
+    img = pygame.image.load(f'recursos/img/texturas/{x}.png').convert_alpha()
     img = pygame.transform.scale(img, (TAM_BLOCO, TAM_BLOCO))
     lista_img.append(img)
 
-save_img = pygame.image.load('img/save_btn.png').convert_alpha()
-load_img = pygame.image.load('img/load_btn.png').convert_alpha()
+save_img = pygame.image.load('recursos/img/save_btn.png').convert_alpha()
+load_img = pygame.image.load('recursos/img/load_btn.png').convert_alpha()
 
 
 verde = (144,201,120)
