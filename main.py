@@ -1,7 +1,11 @@
 import os
 import pygame
+from pygame import mixer
 import random
 import csv
+import button
+
+mixer.init()
 pygame.init()
 
 
@@ -29,7 +33,21 @@ tipos_textura = 15
 tela_scroll = 0
 bg_scroll = 0
 level = 1
-# Carregar imagens
+MAX_LEVELS = 3
+iniciar_jogo = False
+
+
+#CARREGA MUSICA E SONS
+pygame.mixer.music.load('')
+
+
+
+#imagem dos botões do menu
+play_img = pygame.image.load('img/Main menu/BTN PLAY.png').convert_alpha()
+exit_img = pygame.image.load('img/Main menu/BTN Exit.png').convert_alpha()
+restart_img = pygame.image.load('img/restart/BTN Retry.png').convert_alpha()
+
+# Carregar O BACKGROUND
 tela_fundo = pygame.image.load('img/background/2304x1296.png').convert_alpha()
 
 
@@ -79,6 +97,27 @@ def tela_background():
     width = tela_fundo.get_width()
     for x in range(5):
         tela.blit(tela_fundo, ((x * width - bg_scroll, 0)))
+
+
+#FUNÇÃO PARA REINICIAR O NIVEL
+def reiniciar_nivel():
+    grupo_esqueleto.empty()
+    grupo_flecha.empty()
+    grupo_granada.empty()
+    grupo_explosão.empty()
+    grupo_caixas_itens.empty()
+    grupo_decoracao.empty()
+    grupo_agua.empty()
+    grupo_saida.empty()
+
+    #CRIA LISTAS DE BLOCOS VAZIAS
+    data = []
+    for linha in range(linhas):
+        r = [-1] * colunas
+        data.append(r)
+
+    return data
+
 
 
 # CONFIGURA O PERSONAGEM PARA APARECER NA TELA E TAMBÉM SEU TAMANHO
@@ -192,6 +231,22 @@ class Cavaleiro(pygame.sprite.Sprite):
                         self.no_ar = False
                         personagemY = tile[1].top - self.rect.bottom
 
+        #CHECA A COLISAO COM A AGUA
+        if pygame.sprite.spritecollide(self, grupo_agua, False):
+            self.saúde = 0
+
+
+        #checa a colisao com a saída
+        level_complete = False
+        if pygame.sprite.spritecollide(self, grupo_saida, False):
+            level_complete = True
+        
+        #CHECA SE CAIU DO MAPA
+        if self.rect.bottom > altura_tela:
+            self.health = 0
+
+
+
        
         # CHECA SE CHEGOU AO FINAL DO INICIO DA TELA
         if self.tipo_personagem == 'jogador':
@@ -211,7 +266,7 @@ class Cavaleiro(pygame.sprite.Sprite):
                 self.rect.x -= personagemX
                 tela_scroll = -personagemX
         
-        return tela_scroll
+        return tela_scroll, level_complete
 
 
     def Atacar(self):
@@ -397,6 +452,8 @@ class Saida(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.midtop = (x + TAMANHO_BLOCO // 2, y + (TAMANHO_BLOCO - self.image.get_height()))
 
+    def update(self):
+        self.rect.x += tela_scroll
 
 class CaixaItens(pygame.sprite.Sprite):
     def __init__(self, tipo_item, x, y,):
@@ -563,6 +620,11 @@ class Explosão(pygame.sprite.Sprite):
             else:
                 self.image = self.images[self.index]
 
+# CRIA BOTÕES NO MENU
+play_button = button.Button(largura_tela // 2 - 100, altura_tela // 2 - 150, play_img, 1)
+exit_button = button.Button(largura_tela // 2 - 100, altura_tela // 2 + 20, exit_img, 1)
+restart_button = button.Button(largura_tela // 2 - 90, altura_tela // 2 - 20, restart_img, 2)
+
 
 # CRIA GRUPOS DE SPRITE
 grupo_esqueleto = pygame.sprite.Group()
@@ -577,10 +639,11 @@ grupo_saida = pygame.sprite.Group()
 
 # CRIA LISTA VAZIA DE GRADES
 world_data = []
-
 for linha in range(linhas):
     r = [-1] * colunas
     world_data.append(r)
+
+#CARREGA OS DADOS DO NIVEL E CRIA O MUNDO
 with open(f'level{level}_data.csv', newline='') as csvfile:
     reader = csv.reader(csvfile, delimiter=',')
     for x, linha in enumerate(reader):
@@ -594,72 +657,111 @@ jogador, barra_vida = world.processar_dados(world_data)
 
 iniciar = True
 while iniciar:
+    fps.tick(80)
+    if iniciar_jogo == False:
+        #desenha o menu
+        tela.fill(BG)
+        #ADICIONA OS BOTÕES NA TELA
+        if play_button.draw(tela):
+            iniciar_jogo = True
+        if exit_button.draw(tela):
+            iniciar = False
+      
+    else:
 
-    tela_background()
-    world.draw()
+        tela_background()
+        world.draw()
 
-    # MOSTRA VIDA DO JOGADOR
-    barra_vida.desenhar(jogador.saúde)
-    # MOSTRA AS MUNIÇÕES RESTANTES
-    desenhar_texto('MUNIÇÕES: ', font, branco, 10, 35)
-    for x in range(jogador.munição):
-        tela.blit(imagem_flecha, (135 + (x * 10), 40))
-    
-    desenhar_texto('GRANADAS: ', font, branco, 10, 65)
-    for x in range(jogador.granadas):
-        tela.blit(imagem_granada, (145 + (x * 15), 55))
+        # MOSTRA VIDA DO JOGADOR
+        barra_vida.desenhar(jogador.saúde)
+        # MOSTRA AS MUNIÇÕES RESTANTES
+        desenhar_texto('MUNIÇÕES: ', font, branco, 10, 35)
+        for x in range(jogador.munição):
+            tela.blit(imagem_flecha, (135 + (x * 10), 40))
+        
+        desenhar_texto('GRANADAS: ', font, branco, 10, 65)
+        for x in range(jogador.granadas):
+            tela.blit(imagem_granada, (145 + (x * 15), 55))
 
-    jogador.update()
-    jogador.desenhar()
+        jogador.update()
+        jogador.desenhar()
 
-    grupo_esqueleto.update()
-    grupo_esqueleto.draw(tela)
-    for esqueleto in grupo_esqueleto:
-        esqueleto.ia()
-        esqueleto.update()
-        esqueleto.desenhar()
+        grupo_esqueleto.update()
+        grupo_esqueleto.draw(tela)
+        for esqueleto in grupo_esqueleto:
+            esqueleto.ia()
+            esqueleto.update()
+            esqueleto.desenhar()
 
-    # ATUALIZA E DESENHA GRUPOS
-    grupo_flecha.update()
-    grupo_granada.update()
-    grupo_explosão.update()
-    grupo_caixas_itens.update()
-    grupo_agua.update()
-    grupo_decoracao.update()
-    grupo_saida.update()
+        # ATUALIZA E DESENHA GRUPOS
+        grupo_flecha.update()
+        grupo_granada.update()
+        grupo_explosão.update()
+        grupo_caixas_itens.update()
+        grupo_agua.update()
+        grupo_decoracao.update()
+        grupo_saida.update()
 
-    grupo_flecha.draw(tela)
-    grupo_granada.draw(tela)
-    grupo_explosão.draw(tela)
-    grupo_caixas_itens.draw(tela)
-    grupo_agua.draw(tela)
-    grupo_decoracao.draw(tela)
-    grupo_saida.draw(tela)
+        grupo_flecha.draw(tela)
+        grupo_granada.draw(tela)
+        grupo_explosão.draw(tela)
+        grupo_caixas_itens.draw(tela)
+        grupo_agua.draw(tela)
+        grupo_decoracao.draw(tela)
+        grupo_saida.draw(tela)
 
-    # ATUALIZA AÇÃO DO JOGADOR
-    if jogador.vida:
-        if atirando and not jogador.atacando:
-            jogador.Atacar()
-            atirando = False
-        # LANÇAR GRANADA
-        elif granada and granada_atirar == False and jogador.granadas > 0:
-            granada = Granada(jogador.rect.centerx + (0.5 * jogador.rect.size[0] * jogador.direção),
-                              jogador.rect.top, jogador.direção)
-            grupo_granada.add(granada)
-            # REDUZ QTD GRANADAS
-            jogador.granadas -= 1
-            granada_atirar = True
-            print(jogador.granadas)
-        if jogador.no_ar:
-            jogador.atualizar_ações(2)  # pulo
-            
-        elif andar_esquerda or andar_direita:
-            jogador.atualizar_ações(1)  # CORRE
-            
+        # ATUALIZA AÇÃO DO JOGADOR
+        if jogador.vida:
+            if atirando and not jogador.atacando:
+                jogador.Atacar()
+                atirando = False
+            # LANÇAR GRANADA
+            elif granada and granada_atirar == False and jogador.granadas > 0:
+                granada = Granada(jogador.rect.centerx + (0.5 * jogador.rect.size[0] * jogador.direção),
+                                jogador.rect.top, jogador.direção)
+                grupo_granada.add(granada)
+                # REDUZ QTD GRANADAS
+                jogador.granadas -= 1
+                granada_atirar = True
+                print(jogador.granadas)
+            if jogador.no_ar:
+                jogador.atualizar_ações(2)  # pulo
+                
+            elif andar_esquerda or andar_direita:
+                jogador.atualizar_ações(1)  # CORRE
+                
+            else:
+                jogador.atualizar_ações(0)  # IDLE - PARADO
+            tela_scroll, level_complete = jogador.movimentação(andar_esquerda, andar_direita)
+            bg_scroll -= tela_scroll
+            #CHEAC SE O JOGADOR COMPLETOU O NIVEL
+            if level_complete:
+                level += 1
+                bg_scroll = 0
+                world_data = reiniciar_nivel()
+                if level <= MAX_LEVELS:
+                    with open(f'level{level}_data.csv', newline='') as csvfile:
+                        reader = csv.reader(csvfile, delimiter=',')
+                        for x, linha in enumerate(reader):
+                            for y, grade in enumerate(linha):
+                                world_data[x][y] = int(grade)
+                world = World()
+                jogador, barra_vida = world.processar_dados(world_data)
+
+
         else:
-            jogador.atualizar_ações(0)  # IDLE - PARADO
-        tela_scroll = jogador.movimentação(andar_esquerda, andar_direita)
-        bg_scroll -= tela_scroll
+            tela_scroll = 0 
+            if restart_button.draw(tela):
+                bg_scroll = 0
+                world_data = reiniciar_nivel()
+                #CARREGA OS DADOS DO NIVEL E CRIA O MUNDO
+                with open(f'level{level}_data.csv', newline='') as csvfile:
+                    reader = csv.reader(csvfile, delimiter=',')
+                    for x, linha in enumerate(reader):
+                        for y, grade in enumerate(linha):
+                            world_data[x][y] = int(grade)
+                world = World()
+                jogador, barra_vida = world.processar_dados(world_data)
 
 
 
@@ -696,5 +798,5 @@ while iniciar:
             if evento.key == pygame.K_q:
                 granada = False
                 granada_atirar = False
-    fps.tick(80)
+    
     pygame.display.update()

@@ -26,7 +26,8 @@ current_tile = 0
 scroll_left = False
 scroll_right = False
 scroll = 0 
-scroll_speed =1
+
+
 
 #carrega imagens
 img_textura = pygame.image.load('img/background/2304x1296.png').convert_alpha()
