@@ -8,7 +8,8 @@ pygame.init()
 largura_tela = 1000
 altura_tela = 700
 tela = pygame.display.set_mode((largura_tela, altura_tela))
-pygame.display.set_caption('Shooter')
+pygame.display.set_caption('Frontline Fury')
+
 
 # DEFINIÇÕES PARA AÇÕES DO JOGADOR
 andar_esquerda = False
@@ -19,13 +20,19 @@ granada_atirar = False
 
 # DEFINE VARIÁVEIS DO JOGO
 gravidade = 0.5
+SCROLL_THRESH = 300
 TAMANHO_BLOCO = 40
 linhas = 16
 colunas = 150
 TAMANHO_BLOCO = altura_tela // linhas
 tipos_textura = 15
+tela_scroll = 0
+bg_scroll = 0
 level = 1
 # Carregar imagens
+tela_fundo = pygame.image.load('img/background/2304x1296.png').convert_alpha()
+
+
 # GUARDA TEXTURAS NA LISTA
 img_list = []
 for x in range(tipos_textura):
@@ -69,7 +76,9 @@ def desenhar_texto(text, font, texto_coluna, x, y):
 
 def tela_background():
     tela.fill(BG)
-    pygame.draw.line(tela, vermelho, (0, 300), (1000, 300))
+    width = tela_fundo.get_width()
+    for x in range(5):
+        tela.blit(tela_fundo, ((x * width - bg_scroll, 0)))
 
 
 # CONFIGURA O PERSONAGEM PARA APARECER NA TELA E TAMBÉM SEU TAMANHO
@@ -120,6 +129,8 @@ class Cavaleiro(pygame.sprite.Sprite):
         self.image = self.lista_animação[self.action][self.index]
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
 
     def update(self):
         self.atualizar_animação()
@@ -130,6 +141,7 @@ class Cavaleiro(pygame.sprite.Sprite):
 
     def movimentação(self, andar_esquerda, andar_direita):
         # MANIPULAÇÃO DE DIREÇÃO E VELOCIDADE DO PERSONAGEM
+        tela_scroll = 0
         personagemX = 0
         personagemY = 0
         # ATRIBUIR VARIÁVEIS QUE CRIAM A MOVIMENTAÇÃO DO PERSONAGEM
@@ -145,7 +157,7 @@ class Cavaleiro(pygame.sprite.Sprite):
 
         # PULO
         if self.pulo == True and self.no_ar == False:
-            self.velocidade_queda = -9
+            self.velocidade_queda = -11
             self.pulo = False
             self.no_ar = True
         personagemY += self.velocidade_queda
@@ -153,16 +165,54 @@ class Cavaleiro(pygame.sprite.Sprite):
         # APLICAR GRAVIDADE
         self.velocidade_queda += gravidade
         if self.velocidade_queda > 10:
-            self.velocidade_queda
+            self.velocidade_queda 
         personagemY += self.velocidade_queda
+        
+        
         # CHECA A COLISÃO COM O CHÃO
-        if self.rect.bottom + personagemY > 300:
-            personagemY = 300 - self.rect.bottom
-            self.no_ar = False
+        
+        for tile in world.lista_obstaculo:
+            #checa a colisao na direção X
+            if tile[1].colliderect(self.rect.x + personagemX, self.rect.y, self.width, self.height):
+                personagemX = 0
+                #SE A IA ATINGIR A PAREDE, FAZ COM QUE VIREM PARA O LADO CONTRARIO
+                if self.tipo_personagem == 'esqueleto':
+                    self.direção *= -1
+                    self.movimentação_contagem = 0
+
+                #checa pela colisao na direção Y
+            if tile[1].colliderect(self.rect.x, self.rect.y + personagemY, self.width, self.height):
+                    #checa se estou abaixo do chão
+                if self.velocidade_queda < 0: 
+                        self.velocidade_queda = 0
+                        personagemY = tile[1].bottom - self.rect.top
+                        #checa se estou acima do chao
+                elif self.velocidade_queda >=0:
+                        self.velocidade_queda = 0
+                        self.no_ar = False
+                        personagemY = tile[1].top - self.rect.bottom
+
+       
+        # CHECA SE CHEGOU AO FINAL DO INICIO DA TELA
+        if self.tipo_personagem == 'jogador':
+            if self.rect.left + personagemX < 0 or self.rect.right + personagemX > largura_tela:
+                personagemX = 0
+
 
         # ATUALIZAR A POSIÇÃO DO RETÂNGULO
         self.rect.x += personagemX
         self.rect.y += personagemY
+
+        #ATUALIZA O SCROLL BASEADO NA POSIÇÃO DO JOGADOR
+        if self.tipo_personagem == 'jogador':
+            
+            if (self.rect.right > largura_tela - SCROLL_THRESH and bg_scroll < (world.level_length * TAMANHO_BLOCO) - largura_tela)\
+                  or (self.rect.left < SCROLL_THRESH and bg_scroll > abs(personagemX)):
+                self.rect.x -= personagemX
+                tela_scroll = -personagemX
+        
+        return tela_scroll
+
 
     def Atacar(self):
         if self.flecha_cooldown == 0 and self.munição > 0:
@@ -211,6 +261,12 @@ class Cavaleiro(pygame.sprite.Sprite):
                     if self.contagem_parado <= 0:
                         self.parado = False
 
+            #scrollar
+        self.rect.x += tela_scroll
+
+
+
+
     def atualizar_animação(self):
         # ATUALIZA ANIMAÇÃO
         atualização_animação = 200
@@ -258,6 +314,7 @@ class World():
         self.lista_obstaculo = []
 
     def processar_dados(self, dados):
+        self.level_length = len(dados[0])
         # Lê cada valor no arquivo do level, csv
         for y, linha in enumerate(dados):
             for x, grade in enumerate(linha):
@@ -270,12 +327,15 @@ class World():
                     if grade >= 0 and grade <= 4:
                         self.lista_obstaculo.append(tile_data)
                     elif grade >= 5 and grade <= 6:
-                        pass  # AGUA
+                        agua = Agua(img,  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
+                        grupo_agua.add(agua)
                     elif grade >= 7 and grade <= 8:
-                        pass  # decoração
+                        decoracao = Decoração(img,  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
+                        grupo_decoracao.add(decoracao)
+                         
                     elif grade == 9:  # CRIA O JOGADOR
                         jogador = Cavaleiro(
-                            'jogador', x * TAMANHO_BLOCO, y * TAMANHO_BLOCO, 2, 3, 25, 5)
+                            'jogador', x * TAMANHO_BLOCO, y * TAMANHO_BLOCO, 2, 5, 25, 5)
                         barra_vida = BarraVida(
                             10, 10, jogador.saúde, jogador.saúde)
                     elif grade == 10:  # CRIA OS INIMIGOS
@@ -295,13 +355,47 @@ class World():
                             'Saude',  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
                         grupo_caixas_itens.add(item_caixa)
                     elif grade == 14:  # cria saída
-                        pass
+                        saida = Saida(img,  x * TAMANHO_BLOCO, y * TAMANHO_BLOCO)
+                        grupo_saida.add(saida)
         return jogador, barra_vida
 
     def draw(self):
         for tile in self.lista_obstaculo:
+            tile[1][0] += tela_scroll
             tela.blit(tile[0], tile[1])
 
+
+
+class Decoração(pygame.sprite.Sprite):
+    def __init__(self, img, x, y,):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midtop = (x + TAMANHO_BLOCO // 2, y + (TAMANHO_BLOCO - self.image.get_height()))
+    
+
+    def update(self):
+        self.rect.x += tela_scroll
+
+
+class Agua(pygame.sprite.Sprite):
+    def __init__(self, img, x, y,):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midtop = (x + TAMANHO_BLOCO // 2, y + (TAMANHO_BLOCO - self.image.get_height()))
+
+
+    def update(self):
+        self.rect.x += tela_scroll
+
+
+class Saida(pygame.sprite.Sprite):
+    def __init__(self, img, x, y,):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midtop = (x + TAMANHO_BLOCO // 2, y + (TAMANHO_BLOCO - self.image.get_height()))
 
 
 class CaixaItens(pygame.sprite.Sprite):
@@ -314,6 +408,8 @@ class CaixaItens(pygame.sprite.Sprite):
                             (TAMANHO_BLOCO - self.image.get_height()))
 
     def update(self):
+        #SCROLLA
+        self.rect.x += tela_scroll
         # CHECA SE O JOGADOR PEGOU A CAIXA
         if pygame.sprite.collide_rect(self, jogador):
             # CHECA QUAL TIPO DE CAIXA É
@@ -356,10 +452,15 @@ class Flecha(pygame.sprite.Sprite):
 
     def update(self):
         # mover flecha
-        self.rect.x += (self.direção * self.velocidade)
+        self.rect.x += (self.direção * self.velocidade) + tela_scroll
         # checa se a flecha ja saiu da tela
-        if self.rect.right < 0 or self.rect.left > 800:
+        if self.rect.right < 0 or self.rect.left > 1000:
             self.kill()
+
+        #checa a colisao com o nivel
+        for tile in world.lista_obstaculo:
+            if tile[1].colliderect(self.rect):
+                self.kill()
 
         # CHECA COLISÃO ENTRE PERSONAGENS
         if pygame.sprite.spritecollide(jogador, grupo_flecha, False):
@@ -382,6 +483,8 @@ class Granada(pygame.sprite.Sprite):
         self.image = imagem_granada
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
         self.direção = direção
 
     def update(self):
@@ -389,18 +492,28 @@ class Granada(pygame.sprite.Sprite):
         granada_x = self.direção * self.velocidade
         granada_y = self.velocidade_queda
 
-        # CHECA A COLISÃO DA GRANADA COM O CHÃO
-        if self.rect.bottom + granada_y > 300:
-            granada_y = 300 - self.rect.bottom
-            self.velocidade = 0
 
-        # CHECA SE A GRANADA SAIU DA TELA
-        if self.rect.left + granada_x < 0 or self.rect.right + granada_x > 800:
-            self.direção *= -1
-            granada_x = self.direção * self.velocidade
+        #checa a colisao com o nivel
+        for tile in world.lista_obstaculo:
+            if tile[1].colliderect(self.rect.x + granada_y, self.rect.y, self.width, self.height ):
+                self.direção *= -1
+                granada_x = self.direção * self.velocidade
+            if tile[1].colliderect(self.rect.x, self.rect.y + granada_y, self.width, self.height):
+                self.velocidade = 0
+                    #checa se estou abaixo do chão
+                if self.velocidade_queda < 0 : 
+                        self.velocidade_queda = 0
+                        granada_y  = tile[1].bottom - self.rect.top
+                        #checa se estou acima do chao
+                elif self.velocidade_queda >=0:
+                    self.velocidade_queda = 0
+                    granada_y = tile[1].top - self.rect.bottom
+        
+        
+       
 
         # ATUALIZA POSIÇÃO DA GRANADA
-        self.rect.x += granada_x
+        self.rect.x += granada_x + tela_scroll
         self.rect.y += granada_y
 
         # CRONOMETRO PARA EXPLODIR
@@ -436,6 +549,8 @@ class Explosão(pygame.sprite.Sprite):
         self.contador = 0
 
     def update(self):
+        #SCROLLA
+        self.rect.x += tela_scroll
         VELOCIDADE_EXPLOSÃO = 4
         # ATUALIZA A ANIMAÇÃO DA EXPLOSÃO
         self.contador += 1
@@ -455,6 +570,9 @@ grupo_flecha = pygame.sprite.Group()
 grupo_granada = pygame.sprite.Group()
 grupo_explosão = pygame.sprite.Group()
 grupo_caixas_itens = pygame.sprite.Group()
+grupo_decoracao = pygame.sprite.Group()
+grupo_agua = pygame.sprite.Group()
+grupo_saida = pygame.sprite.Group()
 
 
 # CRIA LISTA VAZIA DE GRADES
@@ -486,6 +604,7 @@ while iniciar:
     desenhar_texto('MUNIÇÕES: ', font, branco, 10, 35)
     for x in range(jogador.munição):
         tela.blit(imagem_flecha, (135 + (x * 10), 40))
+    
     desenhar_texto('GRANADAS: ', font, branco, 10, 65)
     for x in range(jogador.granadas):
         tela.blit(imagem_granada, (145 + (x * 15), 55))
@@ -505,11 +624,17 @@ while iniciar:
     grupo_granada.update()
     grupo_explosão.update()
     grupo_caixas_itens.update()
+    grupo_agua.update()
+    grupo_decoracao.update()
+    grupo_saida.update()
 
     grupo_flecha.draw(tela)
     grupo_granada.draw(tela)
     grupo_explosão.draw(tela)
     grupo_caixas_itens.draw(tela)
+    grupo_agua.draw(tela)
+    grupo_decoracao.draw(tela)
+    grupo_saida.draw(tela)
 
     # ATUALIZA AÇÃO DO JOGADOR
     if jogador.vida:
@@ -527,13 +652,16 @@ while iniciar:
             print(jogador.granadas)
         if jogador.no_ar:
             jogador.atualizar_ações(2)  # pulo
-            jogador.movimentação(andar_esquerda, andar_direita)
+            
         elif andar_esquerda or andar_direita:
             jogador.atualizar_ações(1)  # CORRE
-            jogador.movimentação(andar_esquerda, andar_direita)
+            
         else:
             jogador.atualizar_ações(0)  # IDLE - PARADO
-        jogador.movimentação(andar_esquerda, andar_direita)
+        tela_scroll = jogador.movimentação(andar_esquerda, andar_direita)
+        bg_scroll -= tela_scroll
+
+
 
     for evento in pygame.event.get():
         # SAIR DO JOGO
@@ -568,5 +696,5 @@ while iniciar:
             if evento.key == pygame.K_q:
                 granada = False
                 granada_atirar = False
-    fps.tick(60)
+    fps.tick(80)
     pygame.display.update()
