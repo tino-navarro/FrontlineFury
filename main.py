@@ -4,10 +4,23 @@ from pygame import mixer
 import random
 import csv
 from recursos import button
+from datetime import datetime
+import json
+import tkinter as tk
+import math
+
+import pyttsx3
+import speech_recognition as sr
+
+
+tts_engine = pyttsx3.init()
+recognizer = sr.Recognizer()
 
 mixer.init()
 pygame.init()
 
+icone = pygame.image.load('recursos/frontlinefury.png')
+pygame.display.set_icon(icone)
 
 largura_tela = 1000
 altura_tela = 700
@@ -38,16 +51,14 @@ iniciar_jogo = False
 iniciar_intro = False
 
 jogo_pausado = False
-menu_estado = 'main'
+pontos = 0
+log_salvo_nesta_vida = False
 
 
+menu_estado = 'pedir_nome'
+nome_jogador = ''
 
 
-
-# CARREGA MUSICA E SONS
-pygame.mixer.music.load('recursos/audios/Saudades De Minha Terra.wav')
-pygame.mixer.music.set_volume(0.15)
-pygame.mixer.music.play(-1, 0.0, 5000)
 som_pulo = pygame.mixer.Sound('recursos/audios/audio_jump.wav')
 som_pulo.set_volume(0.2)
 
@@ -61,18 +72,21 @@ som_granada.set_volume(0.9)
 cobra_fuma = pygame.image.load('recursos/img/pixelated_image_detailed.png')
 cobra_fuma = pygame.transform.scale(cobra_fuma, (100, 100))
 
+# Folhas background 
+folha_img = pygame.image.load('recursos/img/ambiente/folha.png').convert_alpha()
+folha_img = pygame.transform.scale(folha_img, (20, 20))
+
+
+
 # imagem dos botões do menu PAUSE
-pause_background = pygame.image.load('recursos/img/menu pause/PAUSE PRESET.png').convert_alpha()
+pause_background = pygame.image.load(
+    'recursos/img/menu pause/PAUSE PRESET.png').convert_alpha()
 pause_background = pygame.transform.scale(pause_background, (250, 250))
-voltar_img = pygame.image.load('recursos/img/menu pause/BTN BACK.png',).convert_alpha()
+voltar_img = pygame.image.load(
+    'recursos/img/menu pause/BTN BACK.png',).convert_alpha()
 voltar_img = pygame.transform.scale(voltar_img, (100, 50))
-sair_img = pygame.image.load('recursos/img/Main menu/BTN Exit.png').convert_alpha()
-
-
-
-
-
-
+sair_img = pygame.image.load(
+    'recursos/img/Main menu/BTN Exit.png').convert_alpha()
 
 
 # imagem dos botões do menu
@@ -127,6 +141,136 @@ ROSA = (235, 65, 54)
 font = pygame.font.SysFont('Futura', 30)
 
 
+def inicializarBancoDeDados():
+    # r - read, w - write, a - append
+    try:
+        banco = open("base.atitus", "r")
+    except:
+        print("Banco de Dados Inexistente. Criando...")
+        banco = open("base.atitus", "w")
+
+# FUNCAO PARA SALVAR O LOG
+
+
+def salvar_log(nome, pontos):
+    """
+    Lê a base de dados JSON, adiciona um novo registro (ou sobrescreve se for 'Recruta')
+    e salva a base de dados atualizada.
+    """
+    # Garante que não vamos salvar um log para um nome vazio
+    if not nome:
+        print("Nome do jogador vazio, log não salvo.")
+        return
+
+    # 1. Leitura segura do arquivo
+    try:
+        with open("log.dat", "r", encoding='utf-8') as banco:
+            # json.load lê diretamente do arquivo. Se estiver vazio, trata o erro.
+            # O .read(1) é um truque para checar se o arquivo está vazio sem carregar tudo.
+            dadosDict = json.load(banco) if banco.read(1) else {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Se o arquivo não existe ou está corrompido, começamos com um dicionário vazio.
+        dadosDict = {}
+
+    # 2. Prepara os dados da nova partida
+    agora = datetime.now()
+    data_br = agora.strftime("%d/%m/%Y")
+    hora_br = agora.strftime("%H:%M:%S")
+    nova_partida = {"pontos": pontos, "data": data_br, "hora": hora_br}
+
+    # 3. LÓGICA DE SALVAMENTO CORRIGIDA
+    if nome == "Recruta":
+        # REGRA 1: Para 'Recruta', sempre CRIE ou SOBRESCREVA a entrada.
+        # Não usamos .append() aqui. Simplesmente definimos o valor.
+        dadosDict[nome] = [nova_partida]
+    else:
+        # REGRA 2: Para jogadores nomeados, mantenha o histórico.
+        if nome in dadosDict:
+            # Se o jogador já existe, adicione à sua lista.
+            dadosDict[nome].append(nova_partida)
+        else:
+            # Se é um jogador novo, crie a chave e a lista com a primeira partida.
+            dadosDict[nome] = [nova_partida]
+
+    # 4. Escrita segura no arquivo
+    try:
+        with open("log.dat", "w", encoding='utf-8') as banco:
+            json.dump(dadosDict, banco, indent=4, ensure_ascii=False)
+        print(f"Log salvo para o jogador {nome}: {nova_partida}")
+    except Exception as e:
+        print(f"Ocorreu um erro ao tentar salvar os dados: {e}")
+
+
+def obter_ranking():
+    try:
+        with open("log.dat", "r", encoding='utf-8') as banco:
+            dados = json.load(banco)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Se o arquivo não existe ou está corrompido, retorna uma lista vazia.
+        return []
+
+    todas_as_partidas = []
+    # Itera através de cada jogador (chave) e sua lista de partidas (valor)
+    for nome, partidas in dados.items():
+        # Para cada partida na lista de um jogador
+        for partida in partidas:
+            # Adiciona uma tupla (pontos, nome) à nossa lista geral
+            todas_as_partidas.append((partida['pontos'], nome))
+
+    # Ordena a lista de todas as partidas.
+    # key=lambda item: item[0] diz para ordenar pelo primeiro elemento da tupla (os pontos).
+    # reverse=True faz a ordenação do maior para o menor.
+    partidas_ordenadas = sorted(
+        todas_as_partidas, key=lambda item: item[0], reverse=True)
+
+    # Retorna apenas os 5 primeiros resultados
+    return partidas_ordenadas[:5]
+
+
+def desenhar_ranking(ranking, x, y):
+    """
+    Desenha o ranking formatado na tela.
+    """
+    # Título do Ranking
+    desenhar_texto("MELHORES PONTUAÇÕES", font, ROSA, x, y)
+
+    # Itera através da lista de ranking e desenha cada entrada
+    # O enumerate(..., start=1) nos dá a posição (1º, 2º, 3º...) automaticamente
+    altura_linha = 40
+    for posicao, (pontos, nome) in enumerate(ranking, start=1):
+        texto_ranking = f"{posicao}º - {nome.upper()} - {pontos} PONTOS"
+        desenhar_texto(texto_ranking, font, branco, x,
+                       y + (posicao * altura_linha))
+
+
+def falar(texto):
+    print(f'CORONEL:{texto}')
+    tts_engine.say(texto)
+    tts_engine.runAndWait()
+
+
+def ouvir():
+    with sr.Microphone() as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        print("Diga seu nome de guerra! ")
+
+        try:
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
+            print('Ouvindo...')
+            nome = recognizer.recognize_google(audio, language='pt-BR')
+            return nome.capitalize()
+
+        except sr.UnknownValueError:
+            print('Não consegui entender o que você disse.')
+            return None
+        except sr.RequestError as e:
+            print(f"Erro na requisição ao serviço do Google; {e}")
+            return None
+        except sr.WaitTimeoutError:
+            print("Tempo de escuta esgotado. Ninguém falou nada.")
+            return None
+
+
 def desenhar_texto(text, font, texto_coluna, x, y):
     imagem_texto = font.render(text, True, texto_coluna)
     tela.blit(imagem_texto, (x, y))
@@ -140,6 +284,8 @@ def tela_background():
 
 
 # FUNÇÃO PARA REINICIAR O NIVEL
+
+
 def reiniciar_nivel():
     grupo_esqueleto.empty()
     grupo_flecha.empty()
@@ -365,7 +511,7 @@ class Cavaleiro(pygame.sprite.Sprite):
         if self.index >= len(self.lista_animação[self.action]):
             if self.action == 4:
                 self.index = len(self.lista_animação[self.action]) - 1
-
+                self.kill()
             else:
                 self.index = 0
 
@@ -383,11 +529,17 @@ class Cavaleiro(pygame.sprite.Sprite):
             self.atualiza_tempo = pygame.time.get_ticks()
 
     def verifica_vida(self):
+        global pontos
+        global menu_estado
         if self.saúde <= 0:
             self.saúde = 0
             self.velocidade = 0
             self.vida = False
             self.atualizar_ações(4)
+            if self.tipo_personagem == 'jogador':
+                menu_estado = 'morto'
+            if self.tipo_personagem == 'esqueleto':
+                pontos += 10
 
     def desenhar(self):
         tela.blit(pygame.transform.flip(
@@ -400,6 +552,8 @@ class World():
 
     def processar_dados(self, dados):
         self.level_length = len(dados[0])
+        jogador = None
+        barra_vida = None
         # Lê cada valor no arquivo do level, csv
         for y, linha in enumerate(dados):
             for x, grade in enumerate(linha):
@@ -679,6 +833,56 @@ class TransicaoTela():
         return transicao_completa
 
 
+
+# Classe para o efeito de partículas (folhas caindo)
+class Folha(pygame.sprite.Sprite):
+    def __init__(self, largura_tela, altura_tela, imagem):
+        super().__init__()
+        
+        # Guarda a imagem original para rotações de qualidade
+        self.original_image = imagem
+        self.image = self.original_image.copy()
+        
+        # Posição inicial aleatória (começa fora da tela, no topo)
+        self.rect = self.image.get_rect(
+            center=(random.randint(0, largura_tela), random.randint(-100, -50))
+        )
+
+        # Guarda as posições como floats para um movimento mais suave
+        self.pos_x = float(self.rect.centerx)
+        self.pos_y = float(self.rect.centery)
+
+        # Propriedades de movimento aleatórias para cada folha
+        self.velocidade_y = random.uniform(0.8, 2.5)  # Velocidade de queda
+        self.velocidade_x = random.uniform(-0.5, 0.5) # "Balanço" lateral
+        self.velocidade_rotacao = random.uniform(-1, 1) # Velocidade de rotação
+        self.angulo = 0
+
+        # Referências às dimensões da tela para saber quando resetar
+        self.largura_tela = largura_tela
+        self.altura_tela = altura_tela
+
+    def rotacionar(self):
+        """ Gira a folha e atualiza seu rect para manter o centro."""
+        self.angulo = (self.angulo + self.velocidade_rotacao) % 360
+        self.image = pygame.transform.rotate(self.original_image, self.angulo)
+        self.rect = self.image.get_rect(center=(self.pos_x, self.pos_y))
+
+    def update(self):
+        """ Atualiza a posição e rotação da folha a cada frame."""
+        # Aplica o movimento
+        self.pos_y += self.velocidade_y
+        self.pos_x += self.velocidade_x
+        
+        # Aplica a rotação
+        self.rotacionar()
+
+        # Se a folha saiu da parte de baixo da tela, reseta sua posição no topo
+        if self.rect.top > self.altura_tela:
+            self.pos_y = float(random.randint(-100, -50))
+            self.pos_x = float(random.randint(0, self.largura_tela))
+
+
 # CRIA A TRANSICAO DA TELA
 intro_transicao = TransicaoTela(1, preto, 4)
 transicao_morte = TransicaoTela(2, ROSA, 4)
@@ -686,19 +890,18 @@ transicao_morte = TransicaoTela(2, ROSA, 4)
 # CRIA BOTÕES NO MENU PAUSE
 
 voltar_button = button.Button(largura_tela // 2 - 25,
-                            altura_tela // 2 - 70, voltar_img, 1)
+                              altura_tela // 2 - 70, voltar_img, 1)
 sair_button = button.Button(largura_tela // 2,
                             altura_tela // 2 + 40, sair_img, 1)
 pause_background_button = button.Button(largura_tela // 2 - 100,
-                            altura_tela // 2 - 150, voltar_img, 1)
-
+                                        altura_tela // 2 - 150, voltar_img, 1)
 
 
 # CRIA BOTÕES NO MENU
 play_button = button.Button(largura_tela // 2 - 100,
                             altura_tela // 2 - 150, play_img, 1)
-exit_button = button.Button(largura_tela // 2 - 100,
-                            altura_tela // 2 + 20, exit_img, 1)
+exit_button = button.Button(largura_tela // 2 - 8,
+                            altura_tela // 2 - 30, exit_img, 1)
 restart_button = button.Button(
     largura_tela // 2 - 90, altura_tela // 2 - 20, restart_img, 2)
 
@@ -712,6 +915,11 @@ grupo_caixas_itens = pygame.sprite.Group()
 grupo_decoracao = pygame.sprite.Group()
 grupo_agua = pygame.sprite.Group()
 grupo_saida = pygame.sprite.Group()
+grupo_saida = pygame.sprite.Group()
+grupo_folhas = pygame.sprite.Group()
+for _ in range(50):
+    folha = Folha(largura_tela, altura_tela, folha_img)
+    grupo_folhas.add(folha)
 
 
 # CRIA LISTA VAZIA DE GRADES
@@ -730,29 +938,95 @@ world = World()
 jogador, barra_vida = world.processar_dados(world_data)
 
 # carrega os dados de um nivel e cria o mundo
+velocidade_pulso = 0.007
+escala_min = 0.8
+escala_max = 1
+
 
 
 iniciar = True
 while iniciar:
-    fps.tick(80)
+    fps.tick(60)
     if iniciar_jogo == False:
         # desenha o menu
         tela.fill(BG)
+
+        if menu_estado == "pedir_nome":
+            #  PERGUNTA O NOME
+            tela.fill(BG)  # Limpa a tela
+            desenhar_texto("O Coronel quer saber seu nome de guerra...",
+                           font, branco, largura_tela // 2 - 250, altura_tela // 2 - 50)
+            pygame.display.update()  # Mostra a mensagem ANTES de falar
+
+            # A função de fala bloqueia o jogo, por isso atualizamos a tela antes
+            falar("Você perdeu seu nome, história, conquistas, agora as únicas coisas que te restam é seu fuzil, teu gorro enumerado e teu nome de guerra.")
+
+            # --- Etapa 2: Avisa que está ouvindo ---
+            tela.fill(BG)
+            desenhar_texto("Diga seu nome de guerra agora!", font,
+                           vermelho, largura_tela // 2 - 180, altura_tela // 2 - 50)
+            desenhar_texto("(Microfone ativo)", font, branco,
+                           largura_tela // 2 - 120, altura_tela // 2)
+            pygame.display.update()  # Mostra "Ouvindo..." ANTES de escutar
+
+            # A função de escuta também bloqueia o jogo
+            nome_reconhecido = ouvir()
+
+            # --- Etapa 3: Processa o resultado ---
+            if nome_reconhecido:
+                nome_jogador = nome_reconhecido
+                falar(f"Entendido. Boa sorte no front, {nome_jogador}!")
+            else:
+                nome_jogador = "Recruta"  # Nome padrão se a fala falhar
+                falar(
+                    "Não consegui te ouvir bem. Vamos te chamar de Recruta por enquanto.")
+
+            # --- Etapa 4: Muda para o menu principal ---
+            menu_estado = "menu"
+            pygame.mixer.music.load(
+                'recursos/audios/Saudades De Minha Terra.wav')
+            pygame.mixer.music.set_volume(0.1)
+            pygame.mixer.music.play(-1, 0.0, 5000)
+
+        elif menu_estado == "menu":
+            # --- SEU MENU PRINCIPAL NORMAL VAI AQUI ---
+            desenhar_texto(
+                f"Bem-vindo, {nome_jogador}!", font, branco, 400, 150)
+            desenhar_texto('Teclas AWSD para se movimentar',
+                           font, branco, 350, 380)
+            desenhar_texto('Teclado ESPAÇO para atirar',
+                           font, branco, 350, 410)
+            desenhar_texto('Teclado Q para atirar granada',
+                           font, branco, 350, 440)
         # ADICIONA OS BOTÕES NA TELA
-        if play_button.draw(tela):
-            iniciar_jogo = True
-            iniciar_intro = True
-        if exit_button.draw(tela):
-            iniciar = False
+            if play_button.draw(tela):
+                iniciar_jogo = True
+                iniciar_intro = True
+            if exit_button.draw(tela):
+                iniciar = False
 
     else:
         if not jogo_pausado:
             tela_background()
+            grupo_folhas.update()
+            grupo_folhas.draw(tela)
             world.draw()
-            tela.blit(cobra_fuma, (900, 10))
+            
+            image_center_pos = (950, 60)
+            time_in_ms = pygame.time.get_ticks()
+            oscilar = (math.sin(time_in_ms * velocidade_pulso)+1) / 2
+            escala_atual = escala_min + (escala_max - escala_min) * oscilar
+            nova_largura = int(cobra_fuma.get_width() * escala_atual)
+            nova_altura = int(cobra_fuma.get_height() * escala_atual)
+            if nova_largura <= 0: nova_largura = 1
+            if nova_altura <= 0: nova_altura = 1
+            cobra_fuma_redimensionada = pygame.transform.scale(cobra_fuma, (nova_largura, nova_altura))
+            cobra_fuma_rect = cobra_fuma_redimensionada.get_rect(center=image_center_pos)
+            tela.blit(cobra_fuma_redimensionada, cobra_fuma_rect)
+            desenhar_texto(f'PONTOS: {pontos}', font, branco, 10, 95)
             # MOSTRA VIDA DO JOGADOR
             barra_vida.desenhar(jogador.saúde)
-            
+
             # MOSTRA AS MUNIÇÕES RESTANTES
             desenhar_texto('MUNIÇÕES: ', font, branco, 10, 35)
             for x in range(jogador.munição):
@@ -760,15 +1034,13 @@ while iniciar:
 
             desenhar_texto('GRANADAS: ', font, branco, 10, 65)
             for x in range(jogador.granadas):
-                tela.blit(imagem_granada, (145 + (x * 15), 55))
-            
+                tela.blit(imagem_granada, (145 + (x * 15), 65))
+
             desenhar_texto('Press Esc to Pause', font, branco, 425, 10)
-            
 
             jogador.update()
             jogador.desenhar()
 
-            
             for esqueleto in grupo_esqueleto:
                 esqueleto.ia()
                 esqueleto.update()
@@ -805,7 +1077,7 @@ while iniciar:
                 # LANÇAR GRANADA
                 elif granada and granada_atirar == False and jogador.granadas > 0:
                     granada = Granada(jogador.rect.centerx + (0.5 * jogador.rect.size[0] * jogador.direção),
-                                    jogador.rect.top, jogador.direção)
+                                      jogador.rect.top, jogador.direção)
                     grupo_granada.add(granada)
                     # REDUZ QTD GRANADAS
                     jogador.granadas -= 1
@@ -838,30 +1110,37 @@ while iniciar:
                         jogador, barra_vida = world.processar_dados(world_data)
 
             else:
-                tela_scroll = 0
-                if transicao_morte.transicao():
-                    if restart_button.draw(tela):
-                        transicao_morte.contador_transição = 0
-                        bg_scroll = 0
-                        world_data = reiniciar_nivel()
-                        # CARREGA OS DADOS DO NIVEL E CRIA O MUNDO
-                        with open(f'level{level}_data.csv', newline='') as csvfile:
-                            reader = csv.reader(csvfile, delimiter=',')
-                            for x, linha in enumerate(reader):
-                                for y, grade in enumerate(linha):
-                                    world_data[x][y] = int(grade)
-                        world = World()
-                        jogador, barra_vida = world.processar_dados(world_data)
+                if menu_estado == 'morto':
+                    if not log_salvo_nesta_vida:
+                        salvar_log(nome_jogador, pontos)
+                        ranking_da_partida = obter_ranking()
+                        log_salvo_nesta_vida = True
+
+                    tela_scroll = 0
+                    if transicao_morte.transicao():
+                        desenhar_ranking(
+                            ranking_da_partida, largura_tela // 2 - 160, altura_tela // 2 + 50)
+                        if restart_button.draw(tela):
+                            pontos = 0
+                            transicao_morte.contador_transição = 0
+                            bg_scroll = 0
+                            world_data = reiniciar_nivel()
+                            # CARREGA OS DADOS DO NIVEL E CRIA O MUNDO
+                            with open(f'level{level}_data.csv', newline='') as csvfile:
+                                reader = csv.reader(csvfile, delimiter=',')
+                                for x, linha in enumerate(reader):
+                                    for y, grade in enumerate(linha):
+                                        world_data[x][y] = int(grade)
+                            world = World()
+                            jogador, barra_vida = world.processar_dados(
+                                world_data)
 
         else:
-            tela.blit(pause_background, (400,200 ))
+            tela.blit(pause_background, (400, 200))
             if voltar_button.draw(tela):
                 jogo_pausado = False
             if sair_button.draw(tela):
                 iniciar = False
-        
-    
-
 
     for evento in pygame.event.get():
         # SAIR DO JOGO
