@@ -13,7 +13,7 @@ Efeitos sonoros e trilha sonora
 
 ## Tecnologias utilizadas
 Python 3.13.3
-Biblioteca Pygame
+Bibliotecas Pygame, os, pygame, random, csv, json, tkinter, math, pyttsx3, speech_recognition 
 Assets baixados em fontes gratuitas
 
 ## Créditos

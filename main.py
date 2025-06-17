@@ -8,9 +8,21 @@ from datetime import datetime
 import json
 import tkinter as tk
 import math
+import sys
 
 import pyttsx3
 import speech_recognition as sr
+
+
+def caminho_recurso(caminho_relativo):
+    """ Obtém o caminho absoluto para o recurso, funciona para dev e para o executável. """
+    try:
+        # PyInstaller cria uma pasta temporária e guarda o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # cx_Freeze (e rodando normalmente) usa o caminho absoluto
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, caminho_relativo)
 
 
 tts_engine = pyttsx3.init()
@@ -72,10 +84,10 @@ som_granada.set_volume(0.9)
 cobra_fuma = pygame.image.load('recursos/img/pixelated_image_detailed.png')
 cobra_fuma = pygame.transform.scale(cobra_fuma, (100, 100))
 
-# Folhas background 
-folha_img = pygame.image.load('recursos/img/ambiente/folha.png').convert_alpha()
+# Folhas background
+folha_img = pygame.image.load(
+    'recursos/img/ambiente/folha.png').convert_alpha()
 folha_img = pygame.transform.scale(folha_img, (20, 20))
-
 
 
 # imagem dos botões do menu PAUSE
@@ -833,16 +845,15 @@ class TransicaoTela():
         return transicao_completa
 
 
-
 # Classe para o efeito de partículas (folhas caindo)
 class Folha(pygame.sprite.Sprite):
     def __init__(self, largura_tela, altura_tela, imagem):
         super().__init__()
-        
+
         # Guarda a imagem original para rotações de qualidade
         self.original_image = imagem
         self.image = self.original_image.copy()
-        
+
         # Posição inicial aleatória (começa fora da tela, no topo)
         self.rect = self.image.get_rect(
             center=(random.randint(0, largura_tela), random.randint(-100, -50))
@@ -854,8 +865,9 @@ class Folha(pygame.sprite.Sprite):
 
         # Propriedades de movimento aleatórias para cada folha
         self.velocidade_y = random.uniform(0.8, 2.5)  # Velocidade de queda
-        self.velocidade_x = random.uniform(-0.5, 0.5) # "Balanço" lateral
-        self.velocidade_rotacao = random.uniform(-1, 1) # Velocidade de rotação
+        self.velocidade_x = random.uniform(-0.5, 0.5)  # "Balanço" lateral
+        # Velocidade de rotação
+        self.velocidade_rotacao = random.uniform(-1, 1)
         self.angulo = 0
 
         # Referências às dimensões da tela para saber quando resetar
@@ -873,7 +885,7 @@ class Folha(pygame.sprite.Sprite):
         # Aplica o movimento
         self.pos_y += self.velocidade_y
         self.pos_x += self.velocidade_x
-        
+
         # Aplica a rotação
         self.rotacionar()
 
@@ -943,7 +955,6 @@ escala_min = 0.8
 escala_max = 1
 
 
-
 iniciar = True
 while iniciar:
     fps.tick(60)
@@ -1011,17 +1022,21 @@ while iniciar:
             grupo_folhas.update()
             grupo_folhas.draw(tela)
             world.draw()
-            
+
             image_center_pos = (950, 60)
             time_in_ms = pygame.time.get_ticks()
             oscilar = (math.sin(time_in_ms * velocidade_pulso)+1) / 2
             escala_atual = escala_min + (escala_max - escala_min) * oscilar
             nova_largura = int(cobra_fuma.get_width() * escala_atual)
             nova_altura = int(cobra_fuma.get_height() * escala_atual)
-            if nova_largura <= 0: nova_largura = 1
-            if nova_altura <= 0: nova_altura = 1
-            cobra_fuma_redimensionada = pygame.transform.scale(cobra_fuma, (nova_largura, nova_altura))
-            cobra_fuma_rect = cobra_fuma_redimensionada.get_rect(center=image_center_pos)
+            if nova_largura <= 0:
+                nova_largura = 1
+            if nova_altura <= 0:
+                nova_altura = 1
+            cobra_fuma_redimensionada = pygame.transform.scale(
+                cobra_fuma, (nova_largura, nova_altura))
+            cobra_fuma_rect = cobra_fuma_redimensionada.get_rect(
+                center=image_center_pos)
             tela.blit(cobra_fuma_redimensionada, cobra_fuma_rect)
             desenhar_texto(f'PONTOS: {pontos}', font, branco, 10, 95)
             # MOSTRA VIDA DO JOGADOR
